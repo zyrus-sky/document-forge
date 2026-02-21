@@ -1,0 +1,14 @@
+node_modules/
+dist/
+build/
+.svelte-kit/
+__pycache__/
+temp_sessions/
+uploads/
+output/
+*.env
+.vscode/
+.DS_Store
+*.exe
+build/
+dist/
