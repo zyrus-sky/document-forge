@@ -12,3 +12,8 @@ output/
 *.exe
 build/
 dist/
+*.csv
+*.docx
+*.xlsx
+sheets/
+doc_templete/
