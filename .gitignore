@@ -17,3 +17,16 @@ dist/
 *.xlsx
 sheets/
 doc_templete/
+
+# Debug & test artifacts
+debug_backend.txt
+*.spec
+test_*.py
+test_*.docx
+build_output.txt
+frontend/build_output.txt
+frontend/svelte_errors.txt
+
+# Installer assets
+installer.iss
+installer_assets/
