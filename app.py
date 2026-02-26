@@ -3,6 +3,7 @@ import csv
 import re
 import sys
 import threading
+import time
 from pathlib import Path
 import webview
 from docx import Document
@@ -20,6 +21,51 @@ def resource_path(relative_path):
         base_path = os.path.abspath(".")
 
     return os.path.join(base_path, relative_path)
+
+def start_backend_server():
+    """Start the FastAPI backend server in a background thread"""
+    import uvicorn
+    
+    # Ensure _MEIPASS is on sys.path so 'import backend' works inside PyInstaller
+    try:
+        meipass = sys._MEIPASS
+        if meipass not in sys.path:
+            sys.path.insert(0, meipass)
+    except AttributeError:
+        pass
+    
+    try:
+        from backend import app as fastapi_app
+        from starlette.responses import FileResponse, Response
+        
+        # Serve the built frontend static files via a catch-all route
+        # (mounted AFTER API routes so /api/* is handled first)
+        static_dir = resource_path(os.path.join('frontend', 'build'))
+        if os.path.isdir(static_dir):
+            @fastapi_app.get("/{full_path:path}")
+            async def serve_spa(full_path: str):
+                # Try to serve the exact file
+                file_path = os.path.join(static_dir, full_path)
+                if os.path.isfile(file_path):
+                    # Determine content type
+                    import mimetypes
+                    content_type, _ = mimetypes.guess_type(file_path)
+                    return FileResponse(file_path, media_type=content_type)
+                # Fallback to index.html for SPA routing
+                index_path = os.path.join(static_dir, "index.html")
+                if os.path.isfile(index_path):
+                    return FileResponse(index_path, media_type="text/html")
+                return Response(status_code=404)
+        
+        config = uvicorn.Config(fastapi_app, host="127.0.0.1", port=8000, log_level="warning")
+        server = uvicorn.Server(config)
+        server.run()
+    except Exception as e:
+        import traceback
+        log_path = os.path.join(os.path.expanduser('~'), 'DocumentForge_Error.log')
+        with open(log_path, 'w') as f:
+            f.write("Failed to start backend server:\n")
+            f.write(traceback.format_exc())
 
 class Api:
     def __init__(self):
@@ -246,20 +292,39 @@ class Api:
 if __name__ == '__main__':
     api = Api()
     
-    # Path to the Svelte built files
-    # In dev, use local server. In prod, use embedded files.
-    html_path = 'http://localhost:5173' if len(sys.argv) > 1 and sys.argv[1] == '--dev' else resource_path(os.path.join('frontend', 'build', 'index.html'))
+    is_dev = len(sys.argv) > 1 and sys.argv[1] == '--dev'
+    
+    if is_dev:
+        # Development mode — use Vite dev server
+        html_path = 'http://localhost:5173'
+    else:
+        # Production mode — start FastAPI backend serving static files
+        backend_thread = threading.Thread(target=start_backend_server, daemon=True)
+        backend_thread.start()
+        
+        # Wait for server to be ready
+        import socket
+        for _ in range(50):  # 5 seconds max
+            try:
+                with socket.create_connection(("127.0.0.1", 8000), timeout=0.1):
+                    break
+            except (ConnectionRefusedError, socket.timeout):
+                time.sleep(0.1)
+        
+        html_path = 'http://127.0.0.1:8000'
     
     print(f"Loading UI from: {html_path}")
     
     window = webview.create_window(
-        'Document Bulk Generator', 
+        'Document Forge', 
         url=html_path,
         js_api=api,
-        width=1000, 
-        height=800,
+        width=1200, 
+        height=850,
+        min_size=(900, 600),
         text_select=False,
-        background_color='#111827' # Tailwind gray-900
+        background_color='#020617'
     )
     api.set_window(window)
-    webview.start(debug=True)
+    webview.start(debug=is_dev)
+
